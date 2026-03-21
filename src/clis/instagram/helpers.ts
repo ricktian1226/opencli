@@ -61,27 +61,6 @@ export function decodeHtmlEntities(input: string): string {
     .replace(/&nbsp;/g, ' ');
 }
 
-export interface InstagramMetaProfile {
-  ogTitle?: string;
-  ogDescription?: string;
-  description?: string;
-  canonicalUrl?: string;
-  ogImage?: string;
-}
-
-export interface InstagramProfileSummary {
-  username: string;
-  name: string;
-  bio: string;
-  followers: number;
-  following: number;
-  posts: number;
-  verified: boolean;
-  private: boolean;
-  profile_url: string;
-  avatar?: string;
-}
-
 export interface InstagramPostSummary {
   shortcode: string;
   type: string;
@@ -95,9 +74,18 @@ export interface InstagramPostSummary {
   video_url?: string;
 }
 
-function extractQuotedBio(description: string): string {
-  const match = description.match(/on Instagram:\s*"([^"]+)"/i);
-  return match?.[1]?.trim() || '';
+export interface InstagramPostDetail {
+  shortcode: string;
+  type: string;
+  author: string;
+  caption: string;
+  taken_at: string;
+  likes?: number;
+  comments?: number;
+  url: string;
+  image_urls: string[];
+  video_urls: string[];
+  media_count: number;
 }
 
 function firstNonEmpty(...values: Array<string | undefined>): string {
@@ -106,42 +94,6 @@ function firstNonEmpty(...values: Array<string | undefined>): string {
     if (normalized) return normalized;
   }
   return '';
-}
-
-export function extractProfileFromMeta(meta: InstagramMetaProfile, fallbackUsername = ''): InstagramProfileSummary {
-  const ogTitle = decodeHtmlEntities(meta.ogTitle || '');
-  const ogDescription = decodeHtmlEntities(meta.ogDescription || '');
-  const description = decodeHtmlEntities(meta.description || '');
-  const canonicalUrl = decodeHtmlEntities(meta.canonicalUrl || '');
-
-  const titleMatch = ogTitle.match(/^(.*?)\s*\(@([^)]+)\)/);
-  const usernameFromTitle = titleMatch?.[2]?.trim() || '';
-  const usernameFromCanonical = normalizeInstagramUsername(canonicalUrl);
-  const username = firstNonEmpty(usernameFromTitle, usernameFromCanonical, fallbackUsername);
-
-  const name = firstNonEmpty(titleMatch?.[1], username);
-
-  const bio = firstNonEmpty(
-    extractQuotedBio(description),
-    extractQuotedBio(ogDescription)
-  );
-
-  const followersMatch = ogDescription.match(/([\d.,]+\s*[KMB]?)\s+Followers/i);
-  const followingMatch = ogDescription.match(/([\d.,]+\s*[KMB]?)\s+Following/i);
-  const postsMatch = ogDescription.match(/([\d.,]+\s*[KMB]?)\s+Posts/i);
-
-  return {
-    username,
-    name,
-    bio,
-    followers: parseCount(followersMatch?.[1] || ''),
-    following: parseCount(followingMatch?.[1] || ''),
-    posts: parseCount(postsMatch?.[1] || ''),
-    verified: false,
-    private: false,
-    profile_url: canonicalUrl || (username ? `https://www.instagram.com/${username}/` : ''),
-    avatar: decodeHtmlEntities(meta.ogImage || ''),
-  };
 }
 
 function pickBestImage(media: any): string {
@@ -159,6 +111,38 @@ function pickVideoUrl(media: any): string {
     media?.video_versions?.[0]?.url,
     media?.carousel_media?.[0]?.video_versions?.[0]?.url
   );
+}
+
+function pickAllImages(media: any): string[] {
+  const values = [
+    media?.image_versions2?.candidates?.[0]?.url,
+    media?.thumbnail_url,
+    media?.display_url,
+    ...(Array.isArray(media?.carousel_media)
+      ? media.carousel_media.flatMap((item: any) => [
+          item?.image_versions2?.candidates?.[0]?.url,
+          item?.thumbnail_url,
+          item?.display_url,
+        ])
+      : []),
+  ];
+
+  return Array.from(new Set(values.map((item) => firstNonEmpty(item)).filter(Boolean)));
+}
+
+function pickAllVideos(media: any): string[] {
+  const values = [
+    media?.video_versions?.[0]?.url,
+    media?.video_url,
+    ...(Array.isArray(media?.carousel_media)
+      ? media.carousel_media.flatMap((item: any) => [
+          item?.video_versions?.[0]?.url,
+          item?.video_url,
+        ])
+      : []),
+  ];
+
+  return Array.from(new Set(values.map((item) => firstNonEmpty(item)).filter(Boolean)));
 }
 
 function mediaTypeToName(mediaType: unknown): string {
@@ -204,4 +188,42 @@ export function extractPostsFromFeed(feed: any): InstagramPostSummary[] {
       } satisfies InstagramPostSummary;
     })
     .filter((item: InstagramPostSummary | null): item is InstagramPostSummary => Boolean(item));
+}
+
+export function extractPostDetailFromMedia(media: any, fallbackUrl = ''): InstagramPostDetail | null {
+  const shortcode = String(media?.code || media?.shortcode || '').trim();
+  if (!shortcode) return null;
+
+  const type = mediaTypeToName(media?.media_type);
+  const imageUrls = pickAllImages(media);
+  const videoUrls = pickAllVideos(media);
+  const caption = String(
+    media?.caption?.text
+    || media?.accessibility_caption
+    || media?.carousel_media?.[0]?.accessibility_caption
+    || ''
+  ).trim();
+
+  const kind = Number(media?.media_type) === 2 ? 'reel' : 'p';
+  const url = firstNonEmpty(fallbackUrl, `https://www.instagram.com/${kind}/${shortcode}/`);
+  const author = firstNonEmpty(
+    media?.user?.username,
+    media?.owner?.username,
+  );
+  const takenAtValue = Number(media?.taken_at || media?.taken_at_timestamp || 0);
+  const likesValue = media?.like_and_view_counts_disabled ? 0 : Number(media?.like_count || 0);
+
+  return {
+    shortcode,
+    type,
+    author,
+    caption,
+    taken_at: takenAtValue ? new Date(takenAtValue * 1000).toISOString() : '',
+    likes: likesValue || undefined,
+    comments: Number(media?.comment_count || 0) || undefined,
+    url,
+    image_urls: imageUrls,
+    video_urls: videoUrls,
+    media_count: imageUrls.length + videoUrls.length,
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeHtmlEntities, extractPostsFromFeed, extractProfileFromMeta, parseCount } from './helpers.js';
+import { decodeHtmlEntities, extractPostDetailFromMedia, extractPostsFromFeed, parseCount, parseInstagramPostRef } from './helpers.js';
 
 describe('parseCount', () => {
   it('parses suffixed counts', () => {
@@ -17,25 +17,18 @@ describe('decodeHtmlEntities', () => {
   });
 });
 
-describe('extractProfileFromMeta', () => {
-  it('extracts profile fields from instagram meta tags', () => {
-    const profile = extractProfileFromMeta({
-      ogTitle: 'Instagram (&#064;instagram) &#x2022; Instagram photos and videos',
-      ogDescription: '701M Followers, 225 Following, 8,376 Posts - See Instagram photos and videos from Instagram (&#064;instagram)',
-      description: "701M Followers, 225 Following, 8,376 Posts - Instagram (&#064;instagram) on Instagram: &quot;Discover what's new on Instagram&quot;",
-      canonicalUrl: 'https://www.instagram.com/instagram/',
-      ogImage: 'https://example.com/avatar.jpg',
+describe('parseInstagramPostRef', () => {
+  it('parses reel urls', () => {
+    expect(parseInstagramPostRef('https://www.instagram.com/reel/DWHkBs6EtV-/')).toEqual({
+      kind: 'reel',
+      shortcode: 'DWHkBs6EtV-',
     });
+  });
 
-    expect(profile).toMatchObject({
-      username: 'instagram',
-      name: 'Instagram',
-      bio: "Discover what's new on Instagram",
-      followers: 701_000_000,
-      following: 225,
-      posts: 8376,
-      profile_url: 'https://www.instagram.com/instagram/',
-      avatar: 'https://example.com/avatar.jpg',
+  it('parses plain shortcodes as posts', () => {
+    expect(parseInstagramPostRef('DWHkBs6EtV-')).toEqual({
+      kind: 'p',
+      shortcode: 'DWHkBs6EtV-',
     });
   });
 });
@@ -80,5 +73,35 @@ describe('extractPostsFromFeed', () => {
       video_url: 'https://example.com/reel.mp4',
       is_video: true,
     });
+  });
+});
+
+describe('extractPostDetailFromMedia', () => {
+  it('maps a single media item into post detail fields', () => {
+    const detail = extractPostDetailFromMedia({
+      code: 'REEL99',
+      media_type: 2,
+      user: { username: 'instagram' },
+      caption: { text: 'watch this' },
+      image_versions2: { candidates: [{ url: 'https://example.com/reel.jpg' }] },
+      video_versions: [{ url: 'https://example.com/reel.mp4' }],
+      like_count: 123,
+      comment_count: 9,
+      taken_at: 1700000000,
+    }, 'https://www.instagram.com/reel/REEL99/');
+
+    expect(detail).toMatchObject({
+      shortcode: 'REEL99',
+      type: 'reel',
+      author: 'instagram',
+      caption: 'watch this',
+      likes: 123,
+      comments: 9,
+      url: 'https://www.instagram.com/reel/REEL99/',
+      image_urls: ['https://example.com/reel.jpg'],
+      video_urls: ['https://example.com/reel.mp4'],
+      media_count: 2,
+    });
+    expect(detail?.taken_at).toBe('2023-11-14T22:13:20.000Z');
   });
 });

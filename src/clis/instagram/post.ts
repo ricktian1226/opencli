@@ -1,5 +1,5 @@
 import { cli, Strategy } from '../../registry.js';
-import { parseInstagramPostRef } from './helpers.js';
+import { extractPostDetailFromMedia, parseInstagramPostRef } from './helpers.js';
 
 cli({
   site: 'instagram',
@@ -22,7 +22,7 @@ cli({
     await page.goto(targetUrl);
     await page.wait(4);
 
-    const detail = await page.evaluate(`
+    const payload = await page.evaluate(`
       (async function () {
         var shortcode = ${JSON.stringify(ref.shortcode)};
         var fallbackType = ${JSON.stringify(fallbackType)};
@@ -77,10 +77,44 @@ cli({
         var meta = {
           ogTitle: decodeEntities(attr('meta[property="og:title"]', 'content')),
           ogDescription: decodeEntities(attr('meta[property="og:description"]', 'content')),
+          description: decodeEntities(attr('meta[name="description"]', 'content')),
           ogImage: decodeEntities(attr('meta[property="og:image"]', 'content')),
           ogVideo: decodeEntities(attr('meta[property="og:video"]', 'content')),
           canonicalUrl: decodeEntities(attr('link[rel="canonical"]', 'href')),
+          appUrl: decodeEntities(attr('meta[property="al:ios:url"]', 'content')),
         };
+
+        var mediaIdMatch = meta.appUrl.match(/instagram:\\/\\/media\\?id=(\\d+)/i);
+        var mediaId = mediaIdMatch ? mediaIdMatch[1] : '';
+
+        async function fetchJson(url) {
+          var resp = await fetch(url, {
+            credentials: 'include',
+            headers: {
+              'x-ig-app-id': '936619743392459',
+              'x-requested-with': 'XMLHttpRequest',
+            },
+          });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status + ' for ' + url);
+          return await resp.json();
+        }
+
+        var apiMedia = null;
+        var apiError = '';
+        var apiCandidates = [];
+        if (mediaId) apiCandidates.push('/api/v1/media/' + mediaId + '/info/');
+        apiCandidates.push('/api/v1/media/' + shortcode + '/info/');
+        apiCandidates.push('/api/v1/media/shortcode/' + shortcode + '/info/');
+
+        for (var apiIndex = 0; apiIndex < apiCandidates.length; apiIndex++) {
+          try {
+            var data = await fetchJson(apiCandidates[apiIndex]);
+            apiMedia = data && data.items && data.items[0] ? data.items[0] : null;
+            if (apiMedia) break;
+          } catch (error) {
+            apiError = error instanceof Error ? error.message : String(error);
+          }
+        }
 
         var imageUrls = uniq([meta.ogImage].concat(queryAllAttr('main article img, article img', 'src')))
           .filter(function (url) { return /^https?:\\/\\//i.test(url); });
@@ -88,7 +122,7 @@ cli({
           .filter(function (url) { return /^https?:\\/\\//i.test(url); });
 
         var caption = '';
-        var metaDescription = decodeEntities(attr('meta[name="description"]', 'content'));
+        var metaDescription = meta.description;
         var metaSummary = [meta.ogDescription, metaDescription, meta.ogTitle].join(' ');
         if (metaDescription) {
           caption = metaDescription.indexOf(':') >= 0 ? metaDescription.split(':').slice(1).join(':').trim() : metaDescription;
@@ -152,7 +186,10 @@ cli({
         }
         var type = videoUrls.length > 0 ? 'reel' : fallbackType;
 
-        return [{
+        return {
+          apiMedia: apiMedia,
+          apiError: apiError,
+          fallback: [{
           shortcode: shortcode,
           type: type,
           author: author,
@@ -164,10 +201,17 @@ cli({
           image_urls: imageUrls,
           video_urls: videoUrls,
           media_count: imageUrls.length + videoUrls.length,
-        }];
+          }],
+        };
       })()
     `);
 
+    const apiDetail = extractPostDetailFromMedia((payload as any)?.apiMedia, targetUrl);
+    if (apiDetail) {
+      return [apiDetail];
+    }
+
+    const detail = (payload as any)?.fallback;
     if (!Array.isArray(detail) || detail.length === 0) {
       throw new Error('Failed to read Instagram post');
     }
