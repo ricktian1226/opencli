@@ -33,7 +33,8 @@
     "test:watch": "vitest",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "refresh:instagram-weixin": "node scripts/refresh-instagram-weixin.cjs"
   },
   "keywords": [
     "cli",
