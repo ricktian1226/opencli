@@ -20,3 +20,4 @@ docs/.vitepress/cache
 .windsurf
 .claude
 .cortex
+.tmp*

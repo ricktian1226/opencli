@@ -25,6 +25,31 @@ function splitParagraphs(text) {
     .filter(Boolean);
 }
 
+function parseCaptionFile(dir) {
+  const captionPath = path.join(dir, 'caption.txt');
+  if (!fs.existsSync(captionPath)) {
+    return { caption: '', captionZh: '' };
+  }
+
+  const raw = fs.readFileSync(captionPath, 'utf8').replace(/^\uFEFF/, '');
+  const blocks = splitParagraphs(raw);
+  if (blocks.length === 0) {
+    return { caption: '', captionZh: '' };
+  }
+
+  const original = [];
+  const translated = [];
+  for (let index = 0; index < blocks.length; index += 2) {
+    original.push(blocks[index] || '');
+    translated.push(blocks[index + 1] || '');
+  }
+
+  return {
+    caption: original.join('\n\n').trim(),
+    captionZh: translated.join('\n\n').trim(),
+  };
+}
+
 function renderParagraph(text, translated) {
   if (!text) {
     return '<p style="margin:0; font-size:15px; line-height:1.9; color:#6b7280;">暂无内容</p>';
@@ -63,7 +88,7 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
 
-  return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
+  return `${date.getFullYear()}&#24180;${String(date.getMonth() + 1).padStart(2, '0')}&#26376;${String(date.getDate()).padStart(2, '0')}&#26085;`;
 }
 
 function renderMedia(assetBase, assetFiles) {
@@ -76,14 +101,20 @@ function renderMedia(assetBase, assetFiles) {
   }).join('\n');
 }
 
-function renderArticle(post, assetBase = './') {
+function renderArticle(post, index, assetBase = './') {
   const assetFiles = Array.isArray(post.local_assets) ? post.local_assets : [];
 
   return `
 <article style="margin:0 0 36px; padding:28px 22px; background:#ffffff;">
   <section style="margin:0 0 20px;">
-    <h2 style="margin:0 0 12px; padding:14px 18px; font-size:26px; line-height:1.35; font-weight:700; color:#ffffff; text-align:center; background:#111827; border-radius:12px;">${escapeHtml(post.username || post.author || 'instagram')}</h2>
-    <p style="margin:0; font-size:13px; line-height:1.8; color:#6b7280; text-align:center;">${escapeHtml(formatDate(post.taken_at))}</p>
+    <div style="margin:0 0 10px; text-align:center; font-size:28px; line-height:1; font-weight:700; color:#16a34a;">${index}</div>
+    <div style="width:28px; height:3px; margin:0 auto 14px; background:#16a34a; border-radius:999px;"></div>
+    <div style="margin:0 0 12px; text-align:center;">
+      <div style="display:inline-block; padding:8px 18px 10px 14px; background:#111111; color:#ffffff; font-size:24px; line-height:1.25; font-weight:700;">
+        <span style="display:inline-block; width:4px; height:24px; margin-right:12px; vertical-align:-3px; background:#ffffff;"></span>${escapeHtml(post.username || post.author || 'instagram')}
+      </div>
+    </div>
+    <p style="margin:0; font-size:13px; line-height:1.8; color:#6b7280; text-align:center;">${formatDate(post.taken_at)}</p>
   </section>
   <section style="margin:0 0 22px;">
     ${renderBilingualBlocks(post.caption || '', post.captionZh || '')}
@@ -125,13 +156,16 @@ const rootArticles = [];
 for (const dirName of dirs) {
   const dir = path.join(downloadsDir, dirName);
   const post = readJson(path.join(dir, 'links.json'));
-  const html = wrapHtml(`${post.username || post.author || dirName} - ${post.shortcode || dirName}`, [renderArticle(post)]);
+  const localCaption = parseCaptionFile(dir);
+  post.caption = localCaption.caption || post.caption || '';
+  post.captionZh = localCaption.captionZh || post.captionZh || '';
+  const html = wrapHtml(`${post.username || post.author || dirName} - ${post.shortcode || dirName}`, [renderArticle(post, 1)]);
   fs.writeFileSync(path.join(dir, 'weixin.html'), html, 'utf8');
-  rootArticles.push(renderArticle(post, `./${dirName}/`));
+  rootArticles.push({ html: renderArticle(post, rootArticles.length + 1, `./${dirName}/`) });
 }
 
 if (rootArticles.length > 0) {
-  fs.writeFileSync(path.join(downloadsDir, 'weixin.html'), wrapHtml('instagram archive', rootArticles), 'utf8');
+  fs.writeFileSync(path.join(downloadsDir, 'weixin.html'), wrapHtml('instagram archive', rootArticles.map((item) => item.html)), 'utf8');
 }
 
 console.log(`Refreshed ${dirs.length} weixin.html file(s).`);

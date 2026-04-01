@@ -16,6 +16,11 @@ type ArchivedPost = InstagramPostDetail & {
   thumbnail: string;
 };
 
+type ExistingArchive = {
+  captionZh?: string;
+  local_assets?: string[];
+};
+
 type DownloadResult = {
   success: boolean;
   size: number;
@@ -119,7 +124,7 @@ function formatPublishDate(value: string): string {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    return `${year}\u5e74${month}\u6708${day}\u65e5`;
+    return `${year}&#24180;${month}&#26376;${day}&#26085;`;
   } catch {
     return value;
   }
@@ -129,6 +134,18 @@ function allocateOutputDir(outputRoot: string, username: string, seen: Map<strin
   const count = (seen.get(username) || 0) + 1;
   seen.set(username, count);
   return path.join(outputRoot, count === 1 ? username : `${username}__${count}`);
+}
+
+function readExistingArchive(outputDir: string): ExistingArchive | null {
+  const jsonPath = path.join(outputDir, 'links.json');
+  if (!fs.existsSync(jsonPath)) return null;
+
+  try {
+    const raw = fs.readFileSync(jsonPath, 'utf-8').replace(/^\uFEFF/, '');
+    return JSON.parse(raw) as ExistingArchive;
+  } catch {
+    return null;
+  }
 }
 
 async function downloadViaBrowser(page: any, url: string, destPath: string): Promise<DownloadResult> {
@@ -346,7 +363,7 @@ function writeLinkFiles(outputDir: string, post: ArchivedPost, assetFiles: strin
   fs.writeFileSync(path.join(outputDir, 'links.json'), JSON.stringify({ ...post, local_assets: assetFiles }, null, 2), 'utf-8');
 }
 
-function renderWeixinArticle(post: ArchivedPost, assetFiles: string[], assetBase = './'): string {
+function renderWeixinArticle(post: ArchivedPost, assetFiles: string[], index: number, assetBase = './'): string {
   const publishDate = formatPublishDate(post.taken_at);
   const mediaHtml = assetFiles
     .map((file) => {
@@ -361,8 +378,14 @@ function renderWeixinArticle(post: ArchivedPost, assetFiles: string[], assetBase
   return `
   <article style="margin:0 0 36px; padding:28px 22px; background:#ffffff;">
     <section style="margin:0 0 20px;">
-      <h2 style="margin:0 0 12px; padding:14px 18px; font-size:26px; line-height:1.35; font-weight:700; color:#ffffff; text-align:center; background:#111827; border-radius:12px;">${escapeHtml(post.username)}</h2>
-      <p style="margin:0; font-size:13px; line-height:1.8; color:#6b7280; text-align:center;">${escapeHtml(publishDate)}</p>
+      <div style="margin:0 0 10px; text-align:center; font-size:28px; line-height:1; font-weight:700; color:#16a34a;">${index}</div>
+      <div style="width:28px; height:3px; margin:0 auto 14px; background:#16a34a; border-radius:999px;"></div>
+      <div style="margin:0 0 12px; text-align:center;">
+        <div style="display:inline-block; padding:8px 18px 10px 14px; background:#111111; color:#ffffff; font-size:24px; line-height:1.25; font-weight:700;">
+          <span style="display:inline-block; width:4px; height:24px; margin-right:12px; vertical-align:-3px; background:#ffffff;"></span>${escapeHtml(post.username)}
+        </div>
+      </div>
+      <p style="margin:0; font-size:13px; line-height:1.8; color:#6b7280; text-align:center;">${publishDate}</p>
     </section>
     <section style="margin:0 0 22px;">
       ${renderBilingualBlocks(post.caption, post.captionZh)}
@@ -390,14 +413,14 @@ ${articles.join('\n    <section style="height:18px;"></section>\n')}
 }
 
 function writeWeixinHtml(outputDir: string, post: ArchivedPost, assetFiles: string[]): void {
-  const html = wrapWeixinHtml(`${post.username} - ${post.shortcode}`, [renderWeixinArticle(post, assetFiles)]);
+  const html = wrapWeixinHtml(`${post.username} - ${post.shortcode}`, [renderWeixinArticle(post, assetFiles, 1)]);
   fs.writeFileSync(path.join(outputDir, 'weixin.html'), html, 'utf-8');
 }
 
 function writeRootWeixinHtml(outputRoot: string, entries: Array<{ post: ArchivedPost; dirName: string; assetFiles: string[] }>): void {
   const html = wrapWeixinHtml(
     'Instagram Archive',
-    entries.map((entry) => renderWeixinArticle(entry.post, entry.assetFiles, `./${entry.dirName}/`)),
+    entries.map((entry, index) => renderWeixinArticle(entry.post, entry.assetFiles, index + 1, `./${entry.dirName}/`)),
   );
   fs.writeFileSync(path.join(outputRoot, 'weixin.html'), html, 'utf-8');
 }
@@ -412,9 +435,11 @@ async function archiveSingle(
   const username = detail.author || 'instagram';
   const outputDir = allocateOutputDir(outputRoot, username, seenDirs);
   fs.mkdirSync(outputDir, { recursive: true });
+  const existing = readExistingArchive(outputDir);
 
   const cookies = formatCookieHeader(await page.getCookies({ domain: 'instagram.com' }));
-  const captionZh = await translateParagraphs(page, detail.caption || '');
+  const translated = await translateParagraphs(page, detail.caption || '');
+  const captionZh = translated || existing?.captionZh || detail.caption || '';
   const thumbnail = detail.image_urls[0] || detail.video_urls[0] || '';
 
   const archived: ArchivedPost = {
@@ -439,6 +464,10 @@ async function archiveSingle(
     const ext = guessExtension(url, isVideo ? '.mp4' : '.jpg');
     const filename = `${String(index + 1).padStart(3, '0')}${ext}`;
     const destPath = path.join(outputDir, filename);
+    if (fs.existsSync(destPath) && fs.statSync(destPath).size > 0) {
+      assetFiles.push(filename);
+      continue;
+    }
     const result = await downloadWithFallback(page, url, destPath, cookies, isVideo ? 60000 : 30000);
     if (result.success) assetFiles.push(filename);
   }
