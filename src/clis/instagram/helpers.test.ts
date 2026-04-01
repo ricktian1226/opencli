@@ -72,6 +72,9 @@ describe('extractPostsFromFeed', () => {
       url: 'https://www.instagram.com/reel/REEL99/',
       video_url: 'https://example.com/reel.mp4',
       is_video: true,
+      image_urls: ['https://example.com/reel.jpg'],
+      video_urls: ['https://example.com/reel.mp4'],
+      media_count: 2,
     });
   });
 });

@@ -72,6 +72,9 @@ export interface InstagramPostSummary {
   comments?: number;
   is_video?: boolean;
   video_url?: string;
+  image_urls?: string[];
+  video_urls?: string[];
+  media_count?: number;
 }
 
 export interface InstagramPostDetail {
@@ -185,6 +188,9 @@ export function extractPostsFromFeed(feed: any): InstagramPostSummary[] {
         comments: Number(item?.comment_count || 0) || undefined,
         is_video: isVideo || undefined,
         video_url: videoUrl || undefined,
+        image_urls: pickAllImages(item),
+        video_urls: pickAllVideos(item),
+        media_count: pickAllImages(item).length + pickAllVideos(item).length,
       } satisfies InstagramPostSummary;
     })
     .filter((item: InstagramPostSummary | null): item is InstagramPostSummary => Boolean(item));

@@ -12,7 +12,7 @@ cli({
     { name: 'username', type: 'string', required: true, positional: true, help: 'Instagram username or profile URL' },
     { name: 'limit', type: 'int', default: 12, help: 'Maximum number of posts to return' },
   ],
-  columns: ['shortcode', 'type', 'caption', 'url', 'thumbnail'],
+  columns: ['taken_at', 'shortcode', 'type', 'caption', 'url', 'thumbnail'],
   func: async (page, kwargs) => {
     const username = normalizeInstagramUsername(String(kwargs.username));
     const limit = Math.max(1, Number(kwargs.limit ?? 12));
@@ -31,14 +31,31 @@ cli({
         let feed = null;
         let apiError = '';
         try {
-          const resp = await fetch('/api/v1/feed/user/${username}/username/?count=${limit}', {
-            credentials: 'include',
-            headers,
-          });
-          if (resp.ok) {
-            feed = await resp.json();
-          } else {
-            apiError = 'HTTP ' + resp.status;
+          const pages = [];
+          let nextMaxId = '';
+          while (pages.length < ${limit}) {
+            const params = new URLSearchParams({ count: String(${limit}) });
+            if (nextMaxId) params.set('max_id', nextMaxId);
+
+            const resp = await fetch('/api/v1/feed/user/${username}/username/?' + params.toString(), {
+              credentials: 'include',
+              headers,
+            });
+            if (!resp.ok) {
+              apiError = 'HTTP ' + resp.status;
+              break;
+            }
+
+            const pageData = await resp.json();
+            const items = Array.isArray(pageData?.items) ? pageData.items : [];
+            pages.push.apply(pages, items);
+
+            nextMaxId = String(pageData?.next_max_id || '');
+            if (!nextMaxId || items.length === 0) break;
+          }
+
+          if (pages.length > 0) {
+            feed = { items: pages.slice(0, ${limit}) };
           }
         } catch (error) {
           apiError = error instanceof Error ? error.message : String(error);
