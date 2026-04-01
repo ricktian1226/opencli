@@ -64,6 +64,10 @@ function splitParagraphs(text: string): string[] {
     .filter(Boolean);
 }
 
+function hasCjk(text: string): boolean {
+  return /[\u3400-\u9fff]/.test(String(text || ''));
+}
+
 function joinBilingualParagraphs(original: string, translated: string): string {
   const originalBlocks = splitParagraphs(original);
   const translatedBlocks = splitParagraphs(translated);
@@ -97,20 +101,25 @@ function renderParagraph(text: string, translated: boolean): string {
 function renderBilingualBlocks(original: string, translated: string): string {
   const originalBlocks = splitParagraphs(original);
   const translatedBlocks = splitParagraphs(translated);
-  const count = Math.max(originalBlocks.length, translatedBlocks.length, 1);
+  const count = Math.max(originalBlocks.length, 1);
 
   return Array.from({ length: count }, (_, index) => {
     const originalBlock = originalBlocks[index] || '';
     const translatedBlock = translatedBlocks[index] || '';
+    const translatedHtml = translatedBlock
+      ? `
+      <p style="margin:0; padding:16px 16px 14px; background:#f9fafb; border-left:4px solid #14b8a6; border-radius:8px;">
+        <span style="display:block; font-size:15px; line-height:1.9; color:#0f172a; text-align:justify;">${escapeHtml(translatedBlock).replace(/\r?\n/g, '<br/>')}</span>
+      </p>
+      `.trim()
+      : '';
 
     return `
     <section style="margin:0 0 22px;">
       <div style="margin:0 0 10px;">
         ${renderParagraph(originalBlock, false)}
       </div>
-      <div style="padding:16px 16px 2px; background:#f9fafb; border-left:4px solid #14b8a6; border-radius:8px;">
-        ${renderParagraph(translatedBlock, true)}
-      </div>
+      ${translatedHtml}
     </section>
     `.trim();
   }).join('\n');
@@ -378,13 +387,14 @@ function renderWeixinArticle(post: ArchivedPost, assetFiles: string[], index: nu
   return `
   <article style="margin:0 0 36px; padding:28px 22px; background:#ffffff;">
     <section style="margin:0 0 20px;">
-      <div style="margin:0 0 10px; text-align:center; font-size:28px; line-height:1; font-weight:700; color:#16a34a;">${index}</div>
-      <div style="width:28px; height:3px; margin:0 auto 14px; background:#16a34a; border-radius:999px;"></div>
-      <div style="margin:0 0 12px; text-align:center;">
-        <div style="display:inline-block; padding:8px 18px 10px 14px; background:#111111; color:#ffffff; font-size:24px; line-height:1.25; font-weight:700;">
+      <p style="margin:0 0 14px; text-align:center;">
+        <span style="display:inline-block; padding:0 0 8px; font-size:28px; line-height:1; font-weight:700; color:#16a34a; border-bottom:3px solid #16a34a;">${index}</span>
+      </p>
+      <p style="margin:0 0 12px; text-align:center;">
+        <span style="display:inline-block; padding:8px 18px 10px 14px; background:#111111; color:#ffffff; font-size:24px; line-height:1.25; font-weight:700;">
           <span style="display:inline-block; width:4px; height:24px; margin-right:12px; vertical-align:-3px; background:#ffffff;"></span>${escapeHtml(post.username)}
-        </div>
-      </div>
+        </span>
+      </p>
       <p style="margin:0; font-size:13px; line-height:1.8; color:#6b7280; text-align:center;">${publishDate}</p>
     </section>
     <section style="margin:0 0 22px;">
