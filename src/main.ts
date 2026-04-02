@@ -18,8 +18,6 @@ const USER_CLIS = path.join(os.homedir(), '.opencli', 'clis');
 await discoverClis(BUILTIN_CLIS, USER_CLIS);
 await discoverPlugins();
 
-normalizeInstagramArchiveSingleupArgv(process.argv);
-
 // ── Fast-path: handle --get-completions before commander parses ─────────
 // Usage: opencli --get-completions --cursor <N> [word1 word2 ...]
 const getCompIdx = process.argv.indexOf('--get-completions');
@@ -42,8 +40,3 @@ if (getCompIdx !== -1) {
 }
 
 runCli(BUILTIN_CLIS, USER_CLIS);
-
-function normalizeInstagramArchiveSingleupArgv(argv: string[]): void {
-  if (argv[2] !== 'instagram' || argv[3] !== 'archive' || argv[4] !== 'singleup') return;
-  argv.splice(3, 2, 'archive-singleup');
-}

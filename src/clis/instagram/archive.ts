@@ -27,6 +27,10 @@ type DownloadResult = {
   error?: string;
 };
 
+async function sleep(seconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
 function parseInputList(raw: string): ArchiveRequest[] {
   return raw
     .split(/\r?\n/)
@@ -231,25 +235,36 @@ async function translateParagraphs(page: any, text: string): Promise<string> {
 
   const translatedBlocks: string[] = [];
   for (const block of blocks) {
-    try {
-      const translated = await page.evaluate(`
-        (async () => {
-          const text = ${JSON.stringify(block)};
-          try {
-            const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(text);
-            const resp = await fetch(url);
-            if (!resp.ok) return '';
-            const data = await resp.json();
-            return Array.isArray(data?.[0]) ? data[0].map((item) => item?.[0] || '').join('') : '';
-          } catch {
-            return '';
-          }
-        })()
-      `);
-      translatedBlocks.push(String(translated || '').trim());
-    } catch {
-      translatedBlocks.push('');
+    let translatedText = '';
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const translated = await page.evaluate(`
+          (async () => {
+            const text = ${JSON.stringify(block)};
+            try {
+              const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(text);
+              const resp = await fetch(url);
+              if (!resp.ok) return '';
+              const data = await resp.json();
+              return Array.isArray(data?.[0]) ? data[0].map((item) => item?.[0] || '').join('') : '';
+            } catch {
+              return '';
+            }
+          })()
+        `);
+        translatedText = String(translated || '').trim();
+        if (translatedText && translatedText !== block.trim()) break;
+      } catch {
+        translatedText = '';
+      }
+
+      if (attempt < 2) {
+        await sleep(1.2 * (attempt + 1));
+      }
     }
+
+    translatedBlocks.push(translatedText);
+    await sleep(1.2);
   }
 
   return translatedBlocks.join('\n\n').trim();
@@ -449,7 +464,7 @@ async function archiveSingle(
 
   const cookies = formatCookieHeader(await page.getCookies({ domain: 'instagram.com' }));
   const translated = await translateParagraphs(page, detail.caption || '');
-  const captionZh = translated || existing?.captionZh || detail.caption || '';
+  const captionZh = translated || existing?.captionZh || '';
   const thumbnail = detail.image_urls[0] || detail.video_urls[0] || '';
 
   const archived: ArchivedPost = {

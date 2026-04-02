@@ -25,6 +25,13 @@ function splitParagraphs(text) {
     .filter(Boolean);
 }
 
+function splitLines(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function hasCjk(text) {
   return /[\u3400-\u9fff]/.test(String(text || ''));
 }
@@ -42,6 +49,53 @@ function parseCaptionFile(dir) {
   }
 
   if (blocks.length === 1) {
+    const lines = splitLines(raw);
+    if (lines.length >= 2) {
+      const midpoint = Math.ceil(lines.length / 2);
+      const firstHalf = lines.slice(0, midpoint);
+      const secondHalf = lines.slice(midpoint);
+      const alternatingOriginal = [];
+      const alternatingTranslated = [];
+      for (let index = 0; index < lines.length; index += 2) {
+        alternatingOriginal.push(lines[index] || '');
+        alternatingTranslated.push(lines[index + 1] || '');
+      }
+
+      const secondHalfLooksTranslated = secondHalf.length > 0 && secondHalf.every((line) => hasCjk(line));
+      const alternatingLooksTranslated =
+        alternatingTranslated.length > 0 &&
+        alternatingTranslated.every((line) => !line || hasCjk(line)) &&
+        alternatingOriginal.some((line) => line && !hasCjk(line));
+
+      if (secondHalfLooksTranslated) {
+        return {
+          caption: firstHalf.join('\n\n').trim(),
+          captionZh: secondHalf.join('\n\n').trim(),
+        };
+      }
+
+      if (alternatingLooksTranslated) {
+        return {
+          caption: alternatingOriginal.join('\n\n').trim(),
+          captionZh: alternatingTranslated.join('\n\n').trim(),
+        };
+      }
+
+      const original = [];
+      const translated = [];
+      for (const line of lines) {
+        if (hasCjk(line)) translated.push(line);
+        else original.push(line);
+      }
+
+      if (translated.length > 0) {
+        return {
+          caption: original.join('\n\n').trim(),
+          captionZh: translated.join('\n\n').trim(),
+        };
+      }
+    }
+
     return { caption: blocks[0], captionZh: '' };
   }
 
