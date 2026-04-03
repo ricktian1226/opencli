@@ -242,6 +242,13 @@ function scanTs(filePath: string, site: string): ManifestEntry | null {
       entry.columns = colMatch[1].split(',').map(s => s.trim().replace(/^['"`]|['"`]$/g, '')).filter(Boolean);
     }
 
+    // Extract timeout / timeoutSeconds for TS adapters so lazy-loaded commands
+    // don't fall back to the global 60s default before their module is imported.
+    const timeoutMatch = src.match(/timeout(?:Seconds)?\s*:\s*(\d+)/);
+    if (timeoutMatch) {
+      entry.timeout = parseInt(timeoutMatch[1], 10);
+    }
+
     // Extract args array items: { name: '...', ... }
     const argsBlock = extractTsArgsBlock(src);
     if (argsBlock) {
