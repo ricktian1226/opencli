@@ -44,7 +44,7 @@ description: "Instagram 原帖归档与公众号发布素材工作流。适用�
 ## 4. 常用命令
 
 - 批量归档链接列表：
-  `node dist/main.js instagram archive <input-file> --output .\\downloads -f json`
+  `node dist/main.js instagram archive archive.list --output .\\downloads -f json`
 - 单博主批量归档：
   `node dist/main.js instagram archive-singleup <username> <count> --output .\\downloads_singleup -f json`
 - 基于现有 `caption.txt` 重建 `downloads/weixin.html`：
