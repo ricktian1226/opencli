@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { cli, Strategy } from '../../registry.js';
 import { formatCookieHeader, httpDownload } from '../../download/index.js';
 import { extractPostDetailFromMedia, parseInstagramPostRef, type InstagramPostDetail } from './helpers.js';
@@ -26,6 +27,8 @@ type DownloadResult = {
   size: number;
   error?: string;
 };
+
+type ExportFormat = 'html' | 'pdf';
 
 async function sleep(seconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
@@ -387,9 +390,55 @@ function writeLinkFiles(outputDir: string, post: ArchivedPost, assetFiles: strin
   fs.writeFileSync(path.join(outputDir, 'links.json'), JSON.stringify({ ...post, local_assets: assetFiles }, null, 2), 'utf-8');
 }
 
-function renderWeixinArticle(post: ArchivedPost, assetFiles: string[], index: number, assetBase = './'): string {
+function resolveChromeBinary(): string {
+  const candidates = [
+    process.env.CHROME_BIN,
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  ].filter(Boolean) as string[];
+
+  const match = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!match) {
+    throw new Error('Chrome executable not found, cannot export PDF');
+  }
+  return match;
+}
+
+function exportHtmlToPdf(htmlPath: string, pdfPath: string): void {
+  const chromeBinary = resolveChromeBinary();
+  const args = [
+    '--headless=new',
+    '--disable-gpu',
+    '--no-first-run',
+    '--allow-file-access-from-files',
+    '--print-to-pdf-no-header',
+    `--print-to-pdf=${pdfPath}`,
+    pathToFileURL(htmlPath).href,
+  ];
+
+  const result = spawnSync(chromeBinary, args, {
+    stdio: 'pipe',
+    encoding: 'utf-8',
+    timeout: 120_000,
+    windowsHide: true,
+  });
+
+  if (result.status !== 0 || !fs.existsSync(pdfPath)) {
+    throw new Error((result.stderr || result.stdout || 'Failed to export PDF').trim());
+  }
+}
+
+function renderWeixinArticle(
+  post: ArchivedPost,
+  assetFiles: string[],
+  index: number,
+  assetBase = './',
+  options: { includeVideos?: boolean } = {},
+): string {
   const publishDate = formatPublishDate(post.taken_at);
+  const includeVideos = options.includeVideos ?? true;
   const mediaHtml = assetFiles
+    .filter((file) => includeVideos || !/\.(mp4|webm|mov)$/i.test(file))
     .map((file) => {
       const relative = `${assetBase}${file}`;
       if (/\.(mp4|webm|mov)$/i.test(file)) {
@@ -437,17 +486,55 @@ ${articles.join('\n    <section style="height:18px;"></section>\n')}
 `;
 }
 
-function writeWeixinHtml(outputDir: string, post: ArchivedPost, assetFiles: string[]): void {
-  const html = wrapWeixinHtml(`${post.username} - ${post.shortcode}`, [renderWeixinArticle(post, assetFiles, 1)]);
-  fs.writeFileSync(path.join(outputDir, 'weixin.html'), html, 'utf-8');
+function ensureHtmlFile(htmlPath: string, html: string, exportFormat: ExportFormat): void {
+  if (exportFormat === 'pdf' && fs.existsSync(htmlPath) && fs.statSync(htmlPath).size > 0) {
+    return;
+  }
+  fs.writeFileSync(htmlPath, html, 'utf-8');
 }
 
-function writeRootWeixinHtml(outputRoot: string, entries: Array<{ post: ArchivedPost; dirName: string; assetFiles: string[] }>): void {
+function withPdfTempHtml(htmlPath: string, html: string, callback: (tempPath: string) => void): void {
+  const tempPath = htmlPath.replace(/\.html$/i, '.pdf-export.html');
+  fs.writeFileSync(tempPath, html, 'utf-8');
+  try {
+    callback(tempPath);
+  } finally {
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+  }
+}
+
+function writeWeixinHtml(outputDir: string, post: ArchivedPost, assetFiles: string[], exportFormat: ExportFormat): void {
+  const html = wrapWeixinHtml(`${post.username} - ${post.shortcode}`, [renderWeixinArticle(post, assetFiles, 1)]);
+  const htmlPath = path.join(outputDir, 'weixin.html');
+  ensureHtmlFile(htmlPath, html, exportFormat);
+  if (exportFormat === 'pdf') {
+    const pdfHtml = wrapWeixinHtml(
+      `${post.username} - ${post.shortcode}`,
+      [renderWeixinArticle(post, assetFiles, 1, './', { includeVideos: false })],
+    );
+    withPdfTempHtml(htmlPath, pdfHtml, (tempPath) => exportHtmlToPdf(tempPath, path.join(outputDir, 'weixin.pdf')));
+  }
+}
+
+function writeRootWeixinHtml(
+  outputRoot: string,
+  entries: Array<{ post: ArchivedPost; dirName: string; assetFiles: string[] }>,
+  exportFormat: ExportFormat,
+): void {
   const html = wrapWeixinHtml(
     'Instagram Archive',
     entries.map((entry, index) => renderWeixinArticle(entry.post, entry.assetFiles, index + 1, `./${entry.dirName}/`)),
   );
-  fs.writeFileSync(path.join(outputRoot, 'weixin.html'), html, 'utf-8');
+  const htmlPath = path.join(outputRoot, 'weixin.html');
+  ensureHtmlFile(htmlPath, html, exportFormat);
+  if (exportFormat === 'pdf') {
+    const pdfHtml = wrapWeixinHtml(
+      'Instagram Archive',
+      entries.map((entry, index) =>
+        renderWeixinArticle(entry.post, entry.assetFiles, index + 1, `./${entry.dirName}/`, { includeVideos: false })),
+    );
+    withPdfTempHtml(htmlPath, pdfHtml, (tempPath) => exportHtmlToPdf(tempPath, path.join(outputRoot, 'weixin.pdf')));
+  }
 }
 
 async function archiveSingle(
@@ -455,6 +542,7 @@ async function archiveSingle(
   request: ArchiveRequest,
   outputRoot: string,
   seenDirs: Map<string, number>,
+  exportFormat: ExportFormat,
 ) {
   const detail = await resolveSinglePost(page, request.url);
   const username = detail.author || 'instagram';
@@ -498,7 +586,7 @@ async function archiveSingle(
   }
 
   writeLinkFiles(outputDir, archived, assetFiles);
-  writeWeixinHtml(outputDir, archived, assetFiles);
+  writeWeixinHtml(outputDir, archived, assetFiles, exportFormat);
 
   return {
     username,
@@ -521,11 +609,13 @@ cli({
   args: [
     { name: 'input', type: 'string', required: true, positional: true, help: 'Path to a text file containing Instagram post/reel URLs' },
     { name: 'output', default: './downloads', help: 'Output directory' },
+    { name: 'export-format', default: 'html', help: 'Export format: html or pdf', choices: ['html', 'pdf'] },
   ],
   columns: ['username', 'shortcode', 'status', 'dir'],
   func: async (page, kwargs) => {
     const inputPath = path.resolve(String(kwargs.input));
     const outputRoot = path.resolve(String(kwargs.output || './downloads'));
+    const exportFormat = String(kwargs['export-format'] || 'html').toLowerCase() as ExportFormat;
     const raw = fs.readFileSync(inputPath, 'utf-8');
     const requests = parseInputList(raw);
     if (requests.length === 0) throw new Error('No valid Instagram URLs found in input file');
@@ -535,7 +625,7 @@ cli({
     const seenDirs = new Map<string, number>();
     const results = [];
     for (const request of requests) {
-      results.push(await archiveSingle(page, request, outputRoot, seenDirs));
+      results.push(await archiveSingle(page, request, outputRoot, seenDirs, exportFormat));
     }
 
     writeRootWeixinHtml(
@@ -545,6 +635,7 @@ cli({
         dirName: item.dirName,
         assetFiles: item.assetFiles,
       })),
+      exportFormat,
     );
 
     return results.map(({ post, dirName, assetFiles, ...row }: any) => row);
