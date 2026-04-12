@@ -47,6 +47,7 @@ function guessExtension(url: string, fallback: string): string {
   try {
     const parsed = new URL(url);
     const ext = path.extname(parsed.pathname).toLowerCase();
+    if (ext === '.heic') return '.jpeg';
     if (ext) return ext;
   } catch {
     // keep fallback
