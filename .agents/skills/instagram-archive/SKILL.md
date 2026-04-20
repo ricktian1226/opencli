@@ -48,13 +48,24 @@ description: "Instagram 原帖归档与公众号发布素材工作流。适用�
 - 批量归档并导出 PDF：
   `node dist/main.js instagram archive archive.list --output .\\downloads --export-format pdf -f json`
 - 单博主批量归档：
-  `node dist/main.js instagram archive-singleup <username> <count> --output .\\downloads_singleup -f json`
+  `node dist/main.js instagram archive-singleup rebekah__leah 50 --output .\\downloads_singleup -f json`
 - 基于现有 `caption.txt` 重建 `downloads/weixin.html`：
   `node dist/main.js instagram archive-retranslate --input .\\downloads`
 - 单帖调试：
   `node dist/main.js instagram post <instagram-url> -f json`
 
-## 5. 验证步骤
+## 5. 美丽印记
+
+- 当用户输入：`来一条美丽印记`
+- 直接生成一条英文短句，要求：
+  英文
+  散文风格
+  不超过 10 个英文单词
+- 同时附带中文翻译。
+- 固定输出格式：
+  `美丽印记，建议收藏 | {英文句子} | {中文翻译} | About Today 关于今天`
+
+## 6. 验证步骤
 
 - 检查目标目录是否生成：
   `caption.txt`
@@ -70,14 +81,14 @@ description: "Instagram 原帖归档与公众号发布素材工作流。适用�
   `npm run typecheck`
   `npm run build`
 
-## 6. 编码与稳定性
+## 7. 编码与稳定性
 
 - 所有新写入文本文件统一使用 UTF-8。
 - 读取 JSON 时先去掉 BOM。
 - 如果终端显示乱码，优先相信文件实际内容，并用 Node 或 IDE 再验证，不要直接用乱码覆盖成品。
 - 如果翻译接口频率过高，优先增加请求间隔和重试，不要修改其他归档逻辑。
 
-## 7. 参考资料
+## 8. 参考资料
 
 - 需要查看完整目录规范、排错方式和工作流细节时，读取：
   [references/instagram.md](references/instagram.md)
