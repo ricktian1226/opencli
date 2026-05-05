@@ -1,0 +1,60 @@
+/**
+ * Pipeline executor: runs YAML pipeline steps sequentially.
+ */
+import { getStep } from './registry.js';
+import { log } from '../logger.js';
+export async function executePipeline(page, pipeline, ctx = {}) {
+    const args = ctx.args ?? {};
+    const debug = ctx.debug ?? false;
+    let data = null;
+    const total = pipeline.length;
+    for (let i = 0; i < pipeline.length; i++) {
+        const step = pipeline[i];
+        if (!step || typeof step !== 'object')
+            continue;
+        for (const [op, params] of Object.entries(step)) {
+            if (debug)
+                debugStepStart(i + 1, total, op, params);
+            const handler = getStep(op);
+            if (handler) {
+                data = await handler(page, params, data, args);
+            }
+            else {
+                if (debug)
+                    log.warn(`Unknown step: ${op}`);
+            }
+            if (debug)
+                debugStepResult(op, data);
+        }
+    }
+    return data;
+}
+function debugStepStart(stepNum, total, op, params) {
+    let preview = '';
+    if (typeof params === 'string') {
+        preview = params.length <= 80 ? ` → ${params}` : ` → ${params.slice(0, 77)}...`;
+    }
+    else if (params && typeof params === 'object' && !Array.isArray(params)) {
+        preview = ` (${Object.keys(params).join(', ')})`;
+    }
+    log.step(stepNum, total, op, preview);
+}
+function debugStepResult(op, data) {
+    if (data === null || data === undefined) {
+        log.stepResult('(no data)');
+    }
+    else if (Array.isArray(data)) {
+        log.stepResult(`${data.length} items`);
+    }
+    else if (typeof data === 'object') {
+        const keys = Object.keys(data).slice(0, 5);
+        log.stepResult(`dict (${keys.join(', ')}${Object.keys(data).length > 5 ? '...' : ''})`);
+    }
+    else if (typeof data === 'string') {
+        const p = data.slice(0, 60).replace(/\n/g, '\\n');
+        log.stepResult(`"${p}${data.length > 60 ? '...' : ''}"`);
+    }
+    else {
+        log.stepResult(`${typeof data}`);
+    }
+}
