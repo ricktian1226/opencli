@@ -92,3 +92,9 @@ description: "Instagram 原帖归档与公众号发布素材工作流。适用�
 
 - 需要查看完整目录规范、排错方式和工作流细节时，读取：
   [references/instagram.md](references/instagram.md)
+
+## 9. WSL调试
+在 WSL2 中调试 Chrome，启动如下：
+```
+google-chrome --ozone-platform=wayland
+```
