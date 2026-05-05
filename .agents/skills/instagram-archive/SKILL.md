@@ -43,14 +43,16 @@ description: "Instagram 原帖归档与公众号发布素材工作流。适用�
 
 ## 4. 常用命令
 
+- `instagram archive` 后面必须跟“链接列表文本文件路径”，不是子命令名。
+
 - 批量归档链接列表：
-  `node dist/main.js instagram archive archive.list --output .\\downloads -f json`
+  `node dist/main.js instagram archive ./archive.list --output ./downloads -f json`
 - 批量归档并导出 PDF：
-  `node dist/main.js instagram archive archive.list --output .\\downloads --export-format pdf -f json`
+  `node dist/main.js instagram archive ./archive.list --output ./downloads --export-format pdf -f json`
 - 单博主批量归档：
-  `node dist/main.js instagram archive-singleup rebekah__leah 50 --output .\\downloads_singleup -f json`
+  `node dist/main.js instagram archive-singleup rebekah__leah 50 --output ./downloads_singleup -f json`
 - 基于现有 `caption.txt` 重建 `downloads/weixin.html`：
-  `node dist/main.js instagram archive-retranslate --input .\\downloads`
+  `node dist/main.js instagram archive-retranslate --input ./downloads`
 - 单帖调试：
   `node dist/main.js instagram post <instagram-url> -f json`
 
@@ -94,7 +96,12 @@ description: "Instagram 原帖归档与公众号发布素材工作流。适用�
   [references/instagram.md](references/instagram.md)
 
 ## 9. WSL调试
-在 WSL2 中调试 Chrome，启动如下：
+### 9.1 安装opencli
+```
+
+```
+### 9.2 启动chrome
+启动Chrome：
 ```
 google-chrome --ozone-platform=wayland
 ```
