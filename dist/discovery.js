@@ -10,11 +10,15 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import yaml from 'js-yaml';
 import { Strategy, registerCommand } from './registry.js';
 import { log } from './logger.js';
 /** Plugins directory: ~/.opencli/plugins/ */
 export const PLUGINS_DIR = path.join(os.homedir(), '.opencli', 'plugins');
+let yamlModulePromise;
+async function getYamlModule() {
+    yamlModulePromise ??= import('js-yaml').then((mod) => mod.default ?? mod);
+    return yamlModulePromise;
+}
 /**
  * Discover and register CLI commands.
  * Uses pre-compiled manifest when available for instant startup.
@@ -125,6 +129,7 @@ async function discoverClisFromFs(dir) {
 async function registerYamlCli(filePath, defaultSite) {
     try {
         const raw = await fs.promises.readFile(filePath, 'utf-8');
+        const yaml = await getYamlModule();
         const def = yaml.load(raw);
         if (!def || typeof def !== 'object')
             return;

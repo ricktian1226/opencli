@@ -38,8 +38,10 @@ function connect(): void {
   if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
 
   try {
+    console.log(`[opencli] Connecting to daemon at ${DAEMON_WS_URL}`);
     ws = new WebSocket(DAEMON_WS_URL);
-  } catch {
+  } catch (err) {
+    console.error('[opencli] Failed to create WebSocket:', err);
     scheduleReconnect();
     return;
   }
@@ -64,12 +66,13 @@ function connect(): void {
   };
 
   ws.onclose = () => {
-    console.log('[opencli] Disconnected from daemon');
+    console.warn('[opencli] Disconnected from daemon');
     ws = null;
     scheduleReconnect();
   };
 
-  ws.onerror = () => {
+  ws.onerror = (event) => {
+    console.error('[opencli] WebSocket error', event);
     ws?.close();
   };
 }
@@ -79,6 +82,7 @@ function scheduleReconnect(): void {
   reconnectAttempts++;
   // Exponential backoff: 2s, 4s, 8s, 16s, ..., capped at 60s
   const delay = Math.min(WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1), WS_RECONNECT_MAX_DELAY);
+  console.log(`[opencli] Reconnecting in ${delay}ms`);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();

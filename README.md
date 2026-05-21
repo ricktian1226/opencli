@@ -345,3 +345,23 @@ The CI will automatically build, create a GitHub release, and publish to npm.
 ## License
 
 [Apache-2.0](./LICENSE)
+
+
+## 搭建说明
+### 从源码安装opencli
+参见 https://github.com/ricktian1226/opencli/blob/main/README.zh-CN.md#%E4%BB%8E%E6%BA%90%E7%A0%81%E5%AE%89%E8%A3%85%E9%9D%A2%E5%90%91%E5%BC%80%E5%8F%91%E8%80%85
+```
+git clone git@github.com:jackwener/opencli.git
+cd opencli 
+npm install
+npm run build
+npm link      # 链接到全局环境
+opencli list  # 可以在任何地方使用了！
+```
+### 安装chrome插件
+记住，要根据opencli的版本，查找对应的opencli插件包来安装，否则可能会因为版本不匹配导致daemon和extension无法通信。
+通过 opencli -V 指令查看版本。 
+```
+$ opencli -V
+1.1.1
+```

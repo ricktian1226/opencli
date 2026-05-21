@@ -1,5 +1,5 @@
 const DAEMON_PORT = 19825;
-const DAEMON_HOST = "localhost";
+const DAEMON_HOST = "127.0.0.1";
 const DAEMON_WS_URL = `ws://${DAEMON_HOST}:${DAEMON_PORT}/ext`;
 const WS_RECONNECT_BASE_DELAY = 2e3;
 const WS_RECONNECT_MAX_DELAY = 6e4;
@@ -120,8 +120,10 @@ console.error = (...args) => {
 function connect() {
   if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
   try {
+    console.log(`[opencli] Connecting to daemon at ${DAEMON_WS_URL}`);
     ws = new WebSocket(DAEMON_WS_URL);
-  } catch {
+  } catch (err) {
+    console.error("[opencli] Failed to create WebSocket:", err);
     scheduleReconnect();
     return;
   }
@@ -143,11 +145,12 @@ function connect() {
     }
   };
   ws.onclose = () => {
-    console.log("[opencli] Disconnected from daemon");
+    console.warn("[opencli] Disconnected from daemon");
     ws = null;
     scheduleReconnect();
   };
-  ws.onerror = () => {
+  ws.onerror = (event) => {
+    console.error("[opencli] WebSocket error", event);
     ws?.close();
   };
 }
@@ -155,6 +158,7 @@ function scheduleReconnect() {
   if (reconnectTimer) return;
   reconnectAttempts++;
   const delay = Math.min(WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1), WS_RECONNECT_MAX_DELAY);
+  console.log(`[opencli] Reconnecting in ${delay}ms`);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();

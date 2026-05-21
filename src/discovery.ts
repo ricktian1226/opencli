@@ -11,12 +11,18 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import yaml from 'js-yaml';
 import { type CliCommand, type InternalCliCommand, type Arg, Strategy, registerCommand } from './registry.js';
 import { log } from './logger.js';
 
 /** Plugins directory: ~/.opencli/plugins/ */
 export const PLUGINS_DIR = path.join(os.homedir(), '.opencli', 'plugins');
+
+let yamlModulePromise: Promise<{ load(input: string): unknown }> | undefined;
+
+async function getYamlModule(): Promise<{ load(input: string): unknown }> {
+  yamlModulePromise ??= import('js-yaml').then((mod) => mod.default ?? mod);
+  return yamlModulePromise;
+}
 
 /**
  * Discover and register CLI commands.
@@ -126,6 +132,7 @@ async function discoverClisFromFs(dir: string): Promise<void> {
 async function registerYamlCli(filePath: string, defaultSite: string): Promise<void> {
   try {
     const raw = await fs.promises.readFile(filePath, 'utf-8');
+    const yaml = await getYamlModule();
     const def = yaml.load(raw) as any;
     if (!def || typeof def !== 'object') return;
 
